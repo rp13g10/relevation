@@ -1,6 +1,6 @@
 import os
 from array import array
-from typing import List, Set
+from typing import Set
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,9 @@ from glob import glob
 from tqdm import tqdm
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
+
+# NOTE: This script will need to run in a Docker container with data directory
+#       mounted as a volume
 
 
 def get_available_folders() -> Set[str]:
@@ -26,38 +29,51 @@ def load_lidar_from_folder(lidar_dir: str) -> np.ndarray:
     return lidar
 
 
-def load_bbox_from_folder(lidar_dir: str) -> array:
+def load_bbox_from_folder(lidar_dir: str) -> np.ndarray:
     sf_loc = glob(os.path.join(lidar_dir, "index/*.shp"))[0]
 
     with shp.Reader(sf_loc) as sf:
         bbox = sf.bbox
 
+    bbox = np.array(bbox, dtype=int)
+
     return bbox
 
 
-# TODO: Switch this over to an array operation to improve performance
-def explode_lidar(lidar: np.ndarray, bbox: array) -> pd.DataFrame:
-    base_easting = bbox[0]
-    base_northing = bbox[1]
-
+def explode_lidar(lidar: np.ndarray, bbox: np.ndarray) -> pd.DataFrame:
+    # Get array dimensions
     size_e, size_s = lidar.shape
 
-    records = []
-    for offset_e in tqdm(range(size_e), "Processing File"):
-        for offset_n in range(size_s):
-            easting = base_easting + offset_e
-            northing = base_northing + offset_n
+    # Collapse elevations to 1 dimension, left to right then top to bottom
+    elevations = lidar.flatten(order="C")
 
-            # Coords start bottom left, array indexes start top left
-            offset_s = -(offset_n + 1)
-            elevation = lidar[offset_s, offset_e]
+    # Repeat eastings by array (A, B, A, B)
+    eastings = np.tile(range(bbox[0], bbox[2]), size_s).astype("int32")
 
-            record = (int(easting), int(northing), elevation)
-
-            records.append(record)
-
-    lidar_df = pd.DataFrame.from_records(
-        records, columns=["easting", "northing", "elevation"]
+    # Repeat northings by element (A, A, B, B)
+    northings = np.repeat(range(bbox[3] - 1, bbox[1] - 1, -1), size_e).astype(
+        "int32"
     )
 
+    # Create dataframe from columns
+    lidar_df = pd.DataFrame.from_dict(
+        {"easting": eastings, "northing": northings, "elevation": elevations},
+        orient="columns",
+    )
     return lidar_df
+
+
+def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
+    # TODO: Decide on best way to set up these partitions, current proposal
+    #       results in 1m per e/n partition pair
+    lidar_df.loc[:, "easting_ptn"] = lidar_df["easting"] // 1000
+    lidar_df.loc[:, "northing_ptn"] = lidar_df["northing"] // 1000
+    return lidar_df
+
+
+def store_lidar(Lidar_df: pd.DataFrame):
+    """Will store dataframe contents to ScyllaDB"""
+
+    # Base code: https://stackoverflow.com/questions/49108809/how-to-insert-pandas-dataframe-into-cassandra
+    # Split by partition rather than random allocation
+    pass
