@@ -1,5 +1,10 @@
+import hashlib
 import os
+import random
+import re
+from functools import lru_cache
 from glob import glob
+from math import ceil
 from textwrap import dedent
 from typing import Set, Union
 
@@ -82,6 +87,12 @@ def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
     return lidar_df
 
 
+def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
+    lidar_df.loc[:, "file_id"] = generate_file_id(lidar_dir)
+
+    return lidar_df
+
+
 def store_source_file(lidar_dir: str):
     """Will store parsed file name to ScyllaDB"""
 
@@ -94,14 +105,16 @@ def create_app_keyspace(session: Session):
             WITH REPLICATION = {
                 'class': 'SimpleStrategy',
                 'replication_factor': 1
-            }
-            ;
+            };
         """
     )
     session.execute(query)
 
 
 def create_lidar_table(session: Session):
+    # TODO: Read into optimal partitioning strategies for single record
+    #       retrieval & optimise accordingly
+
     query = dedent(
         """
             CREATE TABLE IF NOT EXISTS
@@ -111,12 +124,13 @@ def create_lidar_table(session: Session):
                     easting int,
                     northing int,
                     elevation float,
+                    file_id text,
                     PRIMARY KEY (
                         (easting_ptn, northing_ptn), easting, northing
                     )
                 )
             WITH
-                CLUSTERING ORDER BY (easting ASC)
+                CLUSTERING ORDER BY (easting ASC);
         """
     )
     session.execute(query)
@@ -127,26 +141,104 @@ def create_dir_table(session: Session):
         """
             CREATE TABLE IF NOT EXISTS
                 relevation.ingested_files (
-                    file_name text PRIMARY KEY
+                    file_name text PRIMARY KEY,
+                    file_id text
                 );
         """
     )
     session.execute(query)
 
 
-# TODO: Add file ID as unique int, generate this before ingesting
-#       Tag each LIDAR entry with corresponding file ID
-#       Once complete, add file and ID to ingested_files table
-#       Build out function to remove records from partially ingested files
+def check_if_file_already_loaded(lidar_dir: str, session: Session) -> bool:
+    query = dedent(
+        f"""
+            SELECT
+                *
+            FROM
+                relevation.ingested_files
+            WHERE
+                file_name = '{lidar_dir}'
+            LIMIT 1;
+        """
+    )
+
+    rows = session.execute(query)
+    if rows:
+        return True
+    return False
 
 
-def store_lidar_df(lidar_df: pd.DataFrame, session: Session):
-    """Will store dataframe contents to ScyllaDB"""
+@lru_cache(16)
+def generate_file_id(lidar_dir: str) -> str:
+    file_id = hashlib.sha256(lidar_dir.encode("utf8"))
+    file_id = file_id.hexdigest()
+    return file_id
 
-    # Base code: https://stackoverflow.com/questions/49108809/how-to-insert-pandas-dataframe-into-cassandra
-    # Split by partition rather than random allocation
+
+def mark_file_as_loaded(lidar_dir: str, session: Session):
+    file_id = generate_file_id(lidar_dir)
 
     query = dedent(
+        f"""
+            INSERT INTO
+                relevation.ingested_files (
+                    file_name,
+                    file_id
+                )
+            VALUES (
+                {lidar_dir},
+                {file_id}
+            );
+        """
+    )
+
+    session.execute(query)
+
+
+def get_all_loaded_files(session: Session) -> Set[str]:
+    query = dedent(
+        """
+            SELECT
+                file_name
+            FROM
+                relevation.ingested_files;
+        """
+    )
+
+    rows = session.execute(query)
+
+    files = {row.file_name for row in rows}
+    files = {generate_file_id(file) for file in files}
+
+    return files
+
+
+def delete_records_from_partially_loaded_files(session: Session):
+    loaded_files = get_all_loaded_files(session)
+    loaded_files = ",".join({f"'{file}'" for file in loaded_files})
+
+    if loaded_files:
+        query = dedent(
+            f"""
+                DELETE FROM
+                    relevation.lidar
+                WHERE
+                    file_id NOT IN ({loaded_files});
+            """
+        )
+    else:
+        query = dedent(
+            """
+                TRUNCATE TABLE
+                    relevation.lidar;
+            """
+        )
+
+    session.execute(query)
+
+
+def _generate_row_insert(row: pd.Series) -> str:
+    insert_query = dedent(
         """
             INSERT INTO
                 relevation.lidar (
@@ -154,31 +246,70 @@ def store_lidar_df(lidar_df: pd.DataFrame, session: Session):
                     northing_ptn,
                     easting,
                     northing,
-                    elevation
+                    elevation,
+                    file_id
                 )
             VALUES (
                 {easting_ptn:d},
                 {northing_ptn:d},
                 {easting:d},
                 {northing:d},
-                {elevation}
+                {elevation},
+                {file_id}
             );
         """
     )
 
-    for row in tqdm(
-        lidar_df.itertuples(),
-        desc="Uploading records",
-        total=len(lidar_df.index),
+    row_query = insert_query.format(
+        easting_ptn=row.easting_ptn,
+        northing_ptn=row.northing_ptn,
+        easting=row.easting,
+        northing=row.northing,
+        elevation=row.elevation,
+        file_id=f"'{row.file_id}'",
+    )
+
+    row_query = re.sub(r"\s+", r" ", row_query)
+
+    return row_query
+
+
+def store_lidar_df_batched(
+    lidar_df: pd.DataFrame, lidar_dir: str, session: Session
+):
+    """Will store dataframe contents to ScyllaDB"""
+
+    # Base code: https://stackoverflow.com/questions/49108809/how-to-insert-pandas-dataframe-into-cassandra
+    # Split by partition rather than random allocation
+
+    if check_if_file_already_loaded(lidar_dir, session):
+        return None
+
+    insert_query = dedent(
+        """
+        BEGIN BATCH
+        {insert_statements}
+        APPLY BATCH;
+        """
+    )
+
+    n_chunks = ceil(len(lidar_df.index) / 1000)
+    for chunk in tqdm(
+        random.shuffle(np.array_split(lidar_df, n_chunks)),
+        desc="Uploading Records",
+        total=n_chunks,
     ):
-        row_query = query.format(
-            easting_ptn=row.easting_ptn,
-            northing_ptn=row.northing_ptn,
-            easting=row.easting,
-            northing=row.northing,
-            elevation=row.elevation,
-        )
-        session.execute(row_query)
+        insert_statements = [
+            _generate_row_insert(row)
+            for row in chunk.itertuples()  # type: ignore
+        ]
+        insert_statements = "\n".join(insert_statements)
+
+        chunk_query = insert_query.format(insert_statements=insert_statements)
+
+        session.execute(chunk_query)
+
+    mark_file_as_loaded(lidar_dir, session)
 
 
 def fetch_elevation(
@@ -209,13 +340,17 @@ def fetch_elevation(
 
 
 if __name__ == "__main__":
+    # TODO: Give ScyllaDB slightly more resource to play with
+
     available_folders = get_available_folders()
     lidar_dir = list(available_folders)[0]
     lidar = load_lidar_from_folder(lidar_dir)
     bbox = load_bbox_from_folder(lidar_dir)
     lidar_df = explode_lidar(lidar, bbox)
     lidar_df = add_partition_keys(lidar_df)
+    lidar_df = add_file_ids(lidar_df, lidar_dir)
 
     create_app_keyspace(sc_sess)
     create_lidar_table(sc_sess)
-    store_lidar_df(lidar_df, sc_sess)
+    create_dir_table(sc_sess)
+    store_lidar_df_batched(lidar_df, lidar_dir, sc_sess)
