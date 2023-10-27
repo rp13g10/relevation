@@ -13,11 +13,39 @@ cur_dir = os.path.abspath(os.path.dirname(__file__))
 
 
 def get_available_folders() -> Set[str]:
+    """Get a list of all of the data folders which are available within the
+    data directory of this package. Data must have been downloaded from the
+    DEFRA website:
+      https://environment.data.gov.uk/DefraDataDownload/?Mode=survey
+    Data should be from the composite DTM layer at 1m resolution, and folder
+    names should match the 'LIDAR-DTM-1m-*' pattern. Any zip archives should be
+    extracted before running this script.
+
+    Raises:
+        FileNotFoundError: If no folders matching the above pattern are found,
+          an error will be raised.
+
+    Returns:
+        Set[str]: A set containing the absolute path to each data folder
+    """
     all_lidar_dirs = glob(os.path.join(cur_dir, "../data/LIDAR-DTM-1m-*"))
+    if not all_lidar_dirs:
+        raise FileNotFoundError("No files found in data directory!")
     return set(all_lidar_dirs)
 
 
 def load_lidar_from_folder(lidar_dir: str) -> np.ndarray:
+    """For a given data folder, read in the contents of the .tif file within as
+    a numpy array.
+
+    Args:
+        lidar_dir (str): The location of the data folder to be loaded
+
+    Returns:
+        np.ndarray: The contents of the .tif file within the provided data
+          folder. Each file represents an area of 5km^2, so the shape of this
+          array will be 5000*5000
+    """
     tif_loc = glob(os.path.join(lidar_dir, "*.tif"))[0]
     with rio.open(tif_loc) as tif:
         lidar = tif.read()
@@ -27,6 +55,17 @@ def load_lidar_from_folder(lidar_dir: str) -> np.ndarray:
 
 
 def load_bbox_from_folder(lidar_dir: str) -> np.ndarray:
+    """For a given data folder, read in the contents of the .shp file within as
+    a numpy array of length 4.
+
+    Args:
+        lidar_dir (str): The location of the data folder to be loaded
+
+    Returns:
+        np.ndarray: The contents of the .shp file within the provided data
+          folder. Will have 4 elements corresponding to the physical area
+          represented by the corresponding .tif file in this folder.
+    """
     sf_loc = glob(os.path.join(lidar_dir, "index/*.shp"))[0]
 
     with shp.Reader(sf_loc) as sf:
