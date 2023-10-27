@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import rasterio as rio
 import shapefile as shp
+from tqdm import tqdm
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -144,7 +145,7 @@ def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
 def iter_dfs() -> Iterator[Tuple[pd.DataFrame, str]]:
     lidar_dirs = get_available_folders()
 
-    for lidar_dir in lidar_dirs:
+    for lidar_dir in tqdm(lidar_dirs):
         lidar = load_lidar_from_folder(lidar_dir)
         bbox = load_bbox_from_folder(lidar_dir)
         file_id = generate_file_id(lidar_dir)

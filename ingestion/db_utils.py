@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from cassandra.cluster import Session
 from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 
 
 def create_app_keyspace(session: Session):
@@ -190,13 +191,12 @@ def store_lidar_df(lidar_df: pd.DataFrame, lidar_id: str, session: Session):
         """
     )
 
-    n_chunks = ceil(len(lidar_df.index) / 1000)
-    for chunk in tqdm(
-        # Random order to prevent hammering a single partition
-        random.shuffle(np.array_split(lidar_df, n_chunks)),
-        desc="Uploading Records",
-        total=n_chunks,
-    ):
+    # 500 gives chunk size just below warning limit for scylladb
+    n_chunks = ceil(len(lidar_df.index) / 500)
+    lidar_chunks = np.array_split(lidar_df, n_chunks)
+    # Random order to prevent hammering a single partition
+    random.shuffle(lidar_chunks)
+    for chunk in tqdm(lidar_chunks, desc="Uploading Records", total=n_chunks):
         insert_statements = [
             _generate_row_insert(row)
             for row in chunk.itertuples()  # type: ignore
@@ -205,7 +205,7 @@ def store_lidar_df(lidar_df: pd.DataFrame, lidar_id: str, session: Session):
 
         chunk_query = insert_query.format(insert_statements=insert_statements)
 
-        session.execute(chunk_query)
+        session.execute_async(chunk_query)
 
     mark_file_as_loaded(lidar_id, session)
 

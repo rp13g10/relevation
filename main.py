@@ -4,6 +4,9 @@ from relevation.ingestion.file_utils import iter_dfs
 from relevation.ingestion.db_utils import initialize_db, store_lidar_df
 
 # NOTE: Docker commands for basic ScyllaDB instance
+# docker run --name relevation_db --volume relevation_data:/var/lib/scylla -p 9042:9042 -d scylladb/scylla
+
+
 # docker network create -d bridge rrp_net
 # docker run --network rrp_net -d scylladb/scylla --smp 1
 # docker run --network rrp_net -i python /bin/bash

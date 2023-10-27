@@ -4,7 +4,7 @@ services:
     ports:
       - 9042:9042
     volumes:
-      - relevation_data:/var/lib/scylla
+      - ./data:/var/lib/scylla
 volumes:
   relevation_data:
     external: true
