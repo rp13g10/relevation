@@ -106,6 +106,19 @@ def generate_file_id(lidar_dir: str) -> str:
 
 
 def explode_lidar(lidar: np.ndarray, bbox: np.ndarray) -> pd.DataFrame:
+    """Parse a given array containing LIDAR data, and the corresponding
+    bounding box. Returns a long-form dataframe containg eastings, northings
+    and elevations.
+
+    Args:
+        lidar (np.ndarray): An array containing LIDAR data
+        bbox (np.ndarray): The bounding box corresponding to the provided
+          lidar array
+
+    Returns:
+        pd.DataFrame: A dataframe containing the 'easting', 'northing' and
+          'elevation' columns
+    """
     # Get array dimensions
     size_e, size_s = lidar.shape
 
@@ -129,6 +142,19 @@ def explode_lidar(lidar: np.ndarray, bbox: np.ndarray) -> pd.DataFrame:
 
 
 def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
+    """Generate a new 'easting_ptn' and 'northing_ptn' column in the LIDAR
+    dataframe. These will be used for the partitioning of data within the
+    database, speeding up retrieval of data.
+    Partition columns are derived by dividing the corresponding coordinate by
+    100 and truncating the output.
+
+    Args:
+        lidar_df (pd.DataFrame): A dataframe containing LIDAR data
+
+    Returns:
+        pd.DataFrame: The input dataset, with additional 'easting_ptn' and
+          'northing_ptn' columns.
+    """
     # TODO: Decide on best way to set up these partitions, current proposal
     #       results in 1m per e/n partition pair
     lidar_df.loc[:, "easting_ptn"] = lidar_df["easting"] // 100
@@ -137,12 +163,39 @@ def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
+    """Generate a file ID for a given file name, and store it in the provided
+    dataframe under the 'file_id' column name. The file ID will be the OS grid
+    reference for the provided file name. For example, LIDAR-DTM-1M-2022-SU20ne
+    would generate a file ID of SU20ne.
+
+    Args:
+        lidar_df (pd.DataFrame): A dataframe containing LIDAR data
+        lidar_dir (str): The name of the file from which `lidar_df` was created
+
+    Returns:
+        pd.DataFrame: The input dataset, with an additional 'file_id' column
+    """
     lidar_df.loc[:, "file_id"] = generate_file_id(lidar_dir)
 
     return lidar_df
 
 
 def iter_dfs() -> Iterator[Tuple[pd.DataFrame, str]]:
+    """Convenience function provided to facilitate the loading of data. This
+    will detect all available LIDAR datas, parse them into dataframes and yield
+    them to the user one file at a time. The generated dataframes will have
+    the following fields:
+      - easting
+      - northing
+      - easting_ptn
+      - northing_ptn
+      - file_id
+      - elevation
+
+    Yields:
+        Iterator[Tuple[pd.DataFrame, str]]: A dataframe containing LIDAR data,
+          and the unique identifier for the file used to generate it.
+    """
     lidar_dirs = get_available_folders()
 
     for lidar_dir in tqdm(lidar_dirs):

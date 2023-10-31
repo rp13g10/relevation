@@ -1,6 +1,8 @@
 import os
 from unittest.mock import patch, MagicMock
 import numpy as np
+import pandas as pd
+from pandas.testing import assert_frame_equal
 import pytest
 
 from relevation.ingestion import file_utils as fu
@@ -128,39 +130,135 @@ def test_explode_lidar():
 
     target_first_five_northings = pd.DataFrame.from_dict(
         {
-            "elevation": [24995000, 24990000, 24985000, 24980000, 24975000],
             "easting": [100000, 100000, 100000, 100000, 100000],
             "northing": [200000, 200001, 200002, 200003, 200004],
+            "elevation": [24995000, 24990000, 24985000, 24980000, 24975000],
         }
     )
     target_first_five_eastings = pd.DataFrame.from_dict(
         {
-            "elevation": [24995000, 24995001, 24995002, 24995003, 24995004],
             "easting": [100000, 100001, 100002, 100003, 100004],
             "northing": [200000, 200000, 200000, 200000, 200000],
+            "elevation": [24995000, 24995001, 24995002, 24995003, 24995004],
         }
     )
     target_last_five_northings = pd.DataFrame.from_dict(
         {
-            "elevation": [24999, 19999, 14999, 9999, 4999],
             "easting": [104999, 104999, 104999, 104999, 104999],
-            "northing": [204995, 204996, 204997, 204998, 204999],
+            "northing": [204999, 204998, 204997, 204996, 204995],
+            "elevation": [4999, 9999, 14999, 19999, 24999],
         }
     )
     target_last_five_eastings = pd.DataFrame.from_dict(
         {
-            "elevation": [4995, 4996, 4997, 4998, 4999],
-            "easting": [104995, 104996, 104997, 104998, 104999],
+            "easting": [104999, 104998, 104997, 104996, 104995],
             "northing": [204999, 204999, 204999, 204999, 204999],
+            "elevation": [4999, 4998, 4997, 4996, 4995],
         }
     )
     # Act
     result = fu.explode_lidar(test_lidar, test_bbox)
-    result_first_five_eastings = result.sort_values(by=["northing", "easting"])
-    result_first_five_northings = result.sort_values(
-        by=["easting", "northing"]
+    result_first_five_eastings = (
+        result.sort_values(by=["northing", "easting"])
+        .head()
+        .reset_index(drop=True)
+    )
+    result_first_five_northings = (
+        result.sort_values(by=["easting", "northing"])
+        .head()
+        .reset_index(drop=True)
+    )
+    result_last_five_eastings = (
+        result.sort_values(by=["northing", "easting"], ascending=False)
+        .head()
+        .reset_index(drop=True)
+    )
+    result_last_five_northings = (
+        result.sort_values(by=["easting", "northing"], ascending=False)
+        .head()
+        .reset_index(drop=True)
     )
 
-    # TODO: Finish writing this test, then have fun getting it to pass!
+    # Assert
+    assert_frame_equal(
+        result_first_five_eastings,
+        target_first_five_eastings,
+        check_dtype=False,
+    )
+    assert_frame_equal(
+        result_first_five_northings,
+        target_first_five_northings,
+        check_dtype=False,
+    )
+    assert_frame_equal(
+        result_last_five_eastings, target_last_five_eastings, check_dtype=False
+    )
+    assert_frame_equal(
+        result_last_five_northings,
+        target_last_five_northings,
+        check_dtype=False,
+    )
+
+
+def test_add_partition_keys():
+    """Check that partition keys are set correctly"""
+
+    # Arrange
+    test_lidar_df = pd.DataFrame.from_dict(
+        {
+            "easting": [100000, 100025, 100050, 100075, 100100],
+            "northing": [9950, 9975, 10000, 10025, 10050],
+        }
+    )
+
+    target = pd.DataFrame.from_dict(
+        {
+            "easting": [100000, 100025, 100050, 100075, 100100],
+            "northing": [9950, 9975, 10000, 10025, 10050],
+            "easting_ptn": [1000, 1000, 1000, 1000, 1001],
+            "northing_ptn": [99, 99, 100, 100, 100],
+        }
+    )
+
+    # Act
+    result = fu.add_partition_keys(test_lidar_df)
 
     # Assert
+    assert_frame_equal(
+        result,
+        target,
+        check_dtype=False,
+    )
+
+
+def test_add_file_ids():
+    """Check that file IDs are added correctly"""
+
+    # Arrange
+    test_lidar_df = pd.DataFrame.from_dict(
+        {
+            "other": [1, 1, 1, 1, 1],
+        }
+    )
+
+    test_lidar_dir = "/some/path/LIDAR-DTM-1m-2022-SU20ne"
+
+    target = pd.DataFrame.from_dict(
+        {"other": [1, 1, 1, 1, 1], "file_id": ["SU20ne"] * 5}
+    )
+
+    # Act
+    result = fu.add_file_ids(test_lidar_df, test_lidar_dir)
+
+    # Assert
+    assert_frame_equal(
+        result,
+        target,
+        check_dtype=False,
+    )
+
+
+@pytest.mark.skip()
+def test_iter_dfs():
+    """This test is not present as it would only serve to show that python
+    is able to iterate through a list correctly"""
