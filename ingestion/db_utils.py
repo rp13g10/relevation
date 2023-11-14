@@ -1,3 +1,5 @@
+"""These handle the configuration of a fresh ScyllaDB cluster, and the writing
+of data to it."""
 import random
 import re
 from math import ceil
@@ -6,29 +8,50 @@ from typing import Set, Union
 
 import numpy as np
 import pandas as pd
-from cassandra.cluster import Session
+from cassandra.cluster import Session  # pylint: disable=no-name-in-module
 from tqdm import tqdm
-from tqdm.contrib.concurrent import process_map
 
 
 def create_app_keyspace(session: Session):
-    # TODO: Determine optimal replication strategy for small cluster
+    """Generate a `relevation` keyspace in the ScyllaDB instance, unless it
+    already exists
+
+    Args:
+        session (Session): An active ScyllaDB session
+    """
+
     query = dedent(
         """
             CREATE KEYSPACE IF NOT EXISTS
                 relevation
             WITH REPLICATION = {
-                'class': 'SimpleStrategy',
-                'replication_factor': 1
+                'class': 'NetworkTopologyStrategy',
+                'datacenter1': 1
             };
         """
     )
     session.execute(query)
 
 
+def drop_app_keyspace(session: Session):
+    """Drop the `relevation` keyspace from the ScyllaDB instance, unless it
+    is already missing
+
+    Args:
+        session (Session): An active ScyllaDB session
+    """
+    query = "DROP KEYSPACE IF EXISTS relevation;"
+    session.execute(query)
+
+
 def create_lidar_table(session: Session):
-    # TODO: Read into optimal partitioning strategies for single record
-    #       retrieval & optimise accordingly
+    """If not already present, create a new table which will contain elevation
+    data parsed from the provided LIDAR files.
+    The created table will be `relevation.lidar`
+
+    Args:
+        session (Session): An active ScyllaDB session
+    """
 
     query = dedent(
         """
@@ -52,6 +75,13 @@ def create_lidar_table(session: Session):
 
 
 def create_dir_table(session: Session):
+    """If not already present, create a new table which will contain a
+    directory of all files which have already been loaded into
+    `relevation.lidar`. The created table will be `relevation.ingested_files`
+
+    Args:
+        session (Session): An active ScyllaDB session
+    """
     # TODO: Check replication strategies available for small datasets
     query = dedent(
         """
@@ -64,7 +94,17 @@ def create_dir_table(session: Session):
     session.execute(query)
 
 
-def check_if_file_already_loaded(lidar_id: str, session: Session) -> bool:
+def check_if_file_already_loaded(file_id: str, session: Session) -> bool:
+    """For a given file ID, query the `relevation.ingested_files` table and
+    deterine whether it has already been ingested or not.
+
+    Args:
+        file_id (str): The unique identifier for a LIDAR file
+        session (Session): An active ScyllaDB session
+
+    Returns:
+        bool: _description_
+    """
     query = dedent(
         f"""
             SELECT
@@ -72,7 +112,7 @@ def check_if_file_already_loaded(lidar_id: str, session: Session) -> bool:
             FROM
                 relevation.ingested_files
             WHERE
-                file_id = '{lidar_id}'
+                file_id = '{file_id}'
             LIMIT 1;
         """
     )
@@ -83,7 +123,14 @@ def check_if_file_already_loaded(lidar_id: str, session: Session) -> bool:
     return False
 
 
-def mark_file_as_loaded(lidar_id: str, session: Session):
+def mark_file_as_loaded(file_id: str, session: Session):
+    """For a given file_id, create a new record in relevation.ingested_files
+    to indicate that it has been loaded in its entirety.
+
+    Args:
+        file_id (str): The unique identifier for a LIDAR file
+        session (Session): An active ScyllaDB session
+    """
     query = dedent(
         f"""
             INSERT INTO
@@ -91,7 +138,7 @@ def mark_file_as_loaded(lidar_id: str, session: Session):
                     file_id
                 )
             VALUES (
-                {lidar_id}
+                '{file_id}'
             );
         """
     )
@@ -100,6 +147,16 @@ def mark_file_as_loaded(lidar_id: str, session: Session):
 
 
 def get_all_loaded_files(session: Session) -> Set[str]:
+    """Get all of the files which have been marked as fully loaded in
+    the relevation.ingested_files table
+
+    Args:
+        session (Session): An active ScyllaDB session
+
+    Returns:
+        Set[str]: All of the files which have been completely loaded into the
+          database
+    """
     query = dedent(
         """
             SELECT
@@ -117,6 +174,14 @@ def get_all_loaded_files(session: Session) -> Set[str]:
 
 
 def delete_records_from_partially_loaded_files(session: Session):
+    """Delete all of the records in relevation.lidar where the file_id does
+    not also appear in relevation.ingested_files. These records will be
+    associated with a file where the ingestion process was interrupted before
+    completion
+
+    Args:
+        session (Session): _description_
+    """
     loaded_files = get_all_loaded_files(session)
     loaded_files = ",".join({f"'{file}'" for file in loaded_files})
 
@@ -141,6 +206,16 @@ def delete_records_from_partially_loaded_files(session: Session):
 
 
 def _generate_row_insert(row: pd.Series) -> str:
+    """Generate a CQL statement which will insert data from the provided pandas
+    series into ScyllaDB when executed
+
+    Args:
+        row (pd.Series): A single row from the pandas dataframe containing data
+          for the current file
+
+    Returns:
+        str: A prepared INSERT query which can be executed against the database
+    """
     insert_query = dedent(
         """
             INSERT INTO
@@ -158,7 +233,7 @@ def _generate_row_insert(row: pd.Series) -> str:
                 {easting:d},
                 {northing:d},
                 {elevation},
-                {file_id}
+                '{file_id}'
             );
         """
     )
@@ -169,7 +244,7 @@ def _generate_row_insert(row: pd.Series) -> str:
         easting=row.easting,
         northing=row.northing,
         elevation=row.elevation,
-        file_id=f"'{row.file_id}'",
+        file_id=row.file_id,
     )
 
     row_query = re.sub(r"\s+", r" ", row_query)
@@ -177,10 +252,10 @@ def _generate_row_insert(row: pd.Series) -> str:
     return row_query
 
 
-def store_lidar_df(lidar_df: pd.DataFrame, lidar_id: str, session: Session):
+def store_lidar_df(lidar_df: pd.DataFrame, file_id: str, session: Session):
     """Will store dataframe contents to ScyllaDB"""
 
-    if check_if_file_already_loaded(lidar_id, session):
+    if check_if_file_already_loaded(file_id, session):
         return None
 
     insert_query = dedent(
@@ -207,7 +282,7 @@ def store_lidar_df(lidar_df: pd.DataFrame, lidar_id: str, session: Session):
 
         session.execute_async(chunk_query)
 
-    mark_file_as_loaded(lidar_id, session)
+    mark_file_as_loaded(file_id, session)
 
 
 def fetch_elevation(
