@@ -1,10 +1,55 @@
 services:
-  db:
+  scylla_1:
     image: scylladb/scylla
     ports:
       - 9042:9042
     volumes:
-      - ./data:/var/lib/scylla
+      - relevation_1:/var/lib/scylla
+    command: --seeds scylla_1 --smp 1 --memory 2G --overprovisioned 1 --api-address 0.0.0.0
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - runplanner
+  scylla_2:
+    image: scylladb/scylla
+    volumes:
+      - relevation_2:/var/lib/scylla
+    command: --seeds scylla_1 --smp 1 --memory 2G --overprovisioned 1 --api-address 0.0.0.0
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      scylla_1:
+        condition: service_healthy
+    networks:
+      - runplanner
+  scylla_3:
+    image: scylladb/scylla
+    volumes:
+      - relevation_3:/var/lib/scylla
+    command: --seeds scylla_1 --smp 1 --memory 2G --overprovisioned 1 --api-address 0.0.0.0
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      scylla_2:
+        condition: service_healthy
+    networks:
+      - runplanner
 volumes:
-  relevation_data:
+  relevation_1:
     external: true
+  relevation_2:
+    external: true
+  relevation_3:
+    external: true
+networks:
+  runplanner:
+    driver: bridge
