@@ -29,7 +29,7 @@ def create_app_keyspace(session: Session):
                 'datacenter1': 1
             };
         """
-    )
+    ).strip()
     session.execute(query)
 
 
@@ -70,7 +70,7 @@ def create_lidar_table(session: Session):
             WITH
                 CLUSTERING ORDER BY (easting ASC);
         """
-    )
+    ).strip()
     session.execute(query)
 
 
@@ -82,7 +82,6 @@ def create_dir_table(session: Session):
     Args:
         session (Session): An active ScyllaDB session
     """
-    # TODO: Check replication strategies available for small datasets
     query = dedent(
         """
             CREATE TABLE IF NOT EXISTS
@@ -90,7 +89,7 @@ def create_dir_table(session: Session):
                     file_id text PRIMARY KEY,
                 );
         """
-    )
+    ).strip()
     session.execute(query)
 
 
@@ -103,7 +102,7 @@ def check_if_file_already_loaded(file_id: str, session: Session) -> bool:
         session (Session): An active ScyllaDB session
 
     Returns:
-        bool: _description_
+        bool: True if the file has already been loaded, False if it hasn't
     """
     query = dedent(
         f"""
@@ -115,7 +114,7 @@ def check_if_file_already_loaded(file_id: str, session: Session) -> bool:
                 file_id = '{file_id}'
             LIMIT 1;
         """
-    )
+    ).strip()
 
     rows = session.execute(query)
     if rows:
@@ -141,7 +140,7 @@ def mark_file_as_loaded(file_id: str, session: Session):
                 '{file_id}'
             );
         """
-    )
+    ).strip()
 
     session.execute(query)
 
@@ -164,7 +163,7 @@ def get_all_loaded_files(session: Session) -> Set[str]:
             FROM
                 relevation.ingested_files;
         """
-    )
+    ).strip()
 
     rows = session.execute(query)
 
@@ -180,27 +179,30 @@ def delete_records_from_partially_loaded_files(session: Session):
     completion
 
     Args:
-        session (Session): _description_
+        session (Session): An active ScyllaDB session
     """
+
+    # TODO: Either fix this, or remove it
+
     loaded_files = get_all_loaded_files(session)
     loaded_files = ",".join({f"'{file}'" for file in loaded_files})
 
     if loaded_files:
         query = dedent(
             f"""
-                DELETE FROM
-                    relevation.lidar
-                WHERE
-                    file_id NOT IN ({loaded_files});
+                DELETE FROM 
+                    elevation.lidar
+                WHERE 
+                    ile_id NOT IN ({loaded_files});
             """
-        )
+        ).strip()
     else:
         query = dedent(
             """
                 TRUNCATE TABLE
                     relevation.lidar;
             """
-        )
+        ).strip()
 
     session.execute(query)
 
@@ -236,7 +238,7 @@ def _generate_row_insert(row: pd.Series) -> str:
                 '{file_id}'
             );
         """
-    )
+    ).strip()
 
     row_query = insert_query.format(
         easting_ptn=row.easting_ptn,
@@ -256,7 +258,7 @@ def store_lidar_df(lidar_df: pd.DataFrame, file_id: str, session: Session):
     """Will store dataframe contents to ScyllaDB"""
 
     if check_if_file_already_loaded(file_id, session):
-        return None
+        return
 
     insert_query = dedent(
         """
@@ -264,7 +266,7 @@ def store_lidar_df(lidar_df: pd.DataFrame, file_id: str, session: Session):
         {insert_statements}
         APPLY BATCH;
         """
-    )
+    ).strip()
 
     # 500 gives chunk size just below warning limit for scylladb
     n_chunks = ceil(len(lidar_df.index) / 500)
@@ -288,6 +290,20 @@ def store_lidar_df(lidar_df: pd.DataFrame, file_id: str, session: Session):
 def fetch_elevation(
     easting: int, northing: int, session: Session
 ) -> Union[float, None]:
+    """For a given easting & northing, retrieve the elevation at that point.
+    This function requires that the provided session connects to a database
+    containing LIDAR data. This ingestion can be triggered by `main.py` in the
+    root of the `relevation` module.
+
+    Args:
+        easting (int): The easting for the point of interest
+        northing (int): The northing for the point of interest
+        session (Session): An active ScyllaDB session
+
+    Returns:
+        Union[float, None]: The elevation for the specified point if it could
+          be retrieved from the database. None if it could not.
+    """
     easting_ptn = easting // 100
     northing_ptn = northing // 100
 
@@ -304,7 +320,7 @@ def fetch_elevation(
                 AND northing = {northing:d}
             LIMIT 1;
         """
-    )
+    ).strip()
 
     rows = session.execute(query)
     if rows:
@@ -313,6 +329,12 @@ def fetch_elevation(
 
 
 def initialize_db(session: Session):
+    """Ensure that the target database is set up and ready to accept data
+    from LIDAR files.
+
+    Args:
+        session (Session): An active ScyllaDB session
+    """
     create_app_keyspace(session)
     create_lidar_table(session)
     create_dir_table(session)
