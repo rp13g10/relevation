@@ -7,6 +7,7 @@ from relevation.ingestion.file_utils import iter_dfs
 from relevation.ingestion.db_utils import (
     initialize_db,
     store_lidar_df,
+    get_all_loaded_files,
 )
 
 warnings.filterwarnings(action="ignore", category=FutureWarning)
@@ -30,9 +31,13 @@ target_files = [
 ]
 
 initialize_db(sc_sess)
+loaded = get_all_loaded_files(sc_sess)
+loaded = "\n - ".join(sorted(loaded))
+print(f"Loaded so far:\n - {loaded}")
 for lidar_df, lidar_id in iter_dfs():
     # Short-term, skip any files not local to Eastleigh
     if not any(term in lidar_id for term in target_files):
         continue
-    store_lidar_df(lidar_df, lidar_id, sc_sess)
-    break
+    if store_lidar_df(lidar_df, lidar_id, sc_sess):
+        print(f"Finished loading {lidar_id}")
+        break

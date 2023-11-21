@@ -1,0 +1,10 @@
+LICENSE
+setup.py
+src/relevation/__init__.py
+src/relevation.egg-info/PKG-INFO
+src/relevation.egg-info/SOURCES.txt
+src/relevation.egg-info/dependency_links.txt
+src/relevation.egg-info/top_level.txt
+src/relevation/ingestion/__init__.py
+src/relevation/ingestion/db_utils.py
+src/relevation/ingestion/file_utils.py

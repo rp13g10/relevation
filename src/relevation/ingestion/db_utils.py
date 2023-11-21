@@ -254,11 +254,17 @@ def _generate_row_insert(row: pd.Series) -> str:
     return row_query
 
 
-def store_lidar_df(lidar_df: pd.DataFrame, file_id: str, session: Session):
-    """Will store dataframe contents to ScyllaDB"""
+def store_lidar_df(
+    lidar_df: pd.DataFrame, file_id: str, session: Session
+) -> bool:
+    """Will store dataframe contents to ScyllaDB
+
+    Returns:
+        bool: True if new data was written, False if the selected dataset was
+          already present in the database"""
 
     if check_if_file_already_loaded(file_id, session):
-        return
+        return False
 
     insert_query = dedent(
         """
@@ -285,6 +291,8 @@ def store_lidar_df(lidar_df: pd.DataFrame, file_id: str, session: Session):
         session.execute_async(chunk_query)
 
     mark_file_as_loaded(file_id, session)
+
+    return True
 
 
 def fetch_elevation(
