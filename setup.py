@@ -12,5 +12,6 @@ setup(
         "rasterio>=1.3.0",
         "pyshp>=2.3.0",
         "tqdm>=4.66.0",
+        "bng-latlon>=1.1",
     ],
 )
