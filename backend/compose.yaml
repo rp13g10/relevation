@@ -7,6 +7,7 @@ services:
       - 9042:9042
     volumes:
       - relevation_1:/var/lib/cassandra
+      - ../data/csv:/source_data
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
       interval: 5s

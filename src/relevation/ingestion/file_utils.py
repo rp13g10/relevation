@@ -12,8 +12,7 @@ from tqdm import tqdm
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
 
-
-def get_available_folders() -> Set[str]:
+def get_available_folders(data_dir: str) -> Set[str]:
     """Get a list of all of the data folders which are available within the
     data directory of this package. Data must have been downloaded from the
     DEFRA website:
@@ -29,7 +28,7 @@ def get_available_folders() -> Set[str]:
     Returns:
         Set[str]: A set containing the absolute path to each data folder
     """
-    all_lidar_dirs = glob(os.path.join(cur_dir, "../data/LIDAR-DTM-1m-*"))
+    all_lidar_dirs = glob(os.path.join(data_dir, "lidar/LIDAR-DTM-1m-*"))
     if not all_lidar_dirs:
         raise FileNotFoundError("No files found in data directory!")
     return set(all_lidar_dirs)
@@ -98,10 +97,7 @@ def generate_file_id(lidar_dir: str) -> str:
         return file_id
 
     raise ValueError(
-        (
-            "Unable to extract grid reference from provided lidar_dir: "
-            + lidar_dir
-        )
+        ("Unable to extract grid reference from provided lidar_dir: " + lidar_dir)
     )
 
 
@@ -129,9 +125,7 @@ def explode_lidar(lidar: np.ndarray, bbox: np.ndarray) -> pd.DataFrame:
     eastings = np.tile(range(bbox[0], bbox[2]), size_s).astype("int32")
 
     # Repeat northings by element (A, A, B, B)
-    northings = np.repeat(range(bbox[3] - 1, bbox[1] - 1, -1), size_e).astype(
-        "int32"
-    )
+    northings = np.repeat(range(bbox[3] - 1, bbox[1] - 1, -1), size_e).astype("int32")
 
     # Create dataframe from columns
     lidar_df = pd.DataFrame.from_dict(
@@ -180,7 +174,7 @@ def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
     return lidar_df
 
 
-def iter_dfs() -> Iterator[Tuple[pd.DataFrame, str]]:
+def iter_dfs(data_dir: str) -> Iterator[Tuple[pd.DataFrame, str]]:
     """Convenience function provided to facilitate the loading of data. This
     will detect all available LIDAR datas, parse them into dataframes and yield
     them to the user one file at a time. The generated dataframes will have
@@ -196,7 +190,7 @@ def iter_dfs() -> Iterator[Tuple[pd.DataFrame, str]]:
         Iterator[Tuple[pd.DataFrame, str]]: A dataframe containing LIDAR data,
           and the unique identifier for the file used to generate it.
     """
-    lidar_dirs = get_available_folders()
+    lidar_dirs = get_available_folders(data_dir)
 
     for lidar_dir in tqdm(lidar_dirs):
         lidar = load_lidar_from_folder(lidar_dir)
