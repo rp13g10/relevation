@@ -20,6 +20,7 @@ sc_sess = sc_db.connect()
 data_dir = '/home/ross/repos/relevation/data'
 
 initialize_db(sc_sess)
+
 for lidar_df, lidar_id in iter_dfs(data_dir):
     load_df(lidar_df, lidar_id, data_dir)
     mark_file_as_loaded(lidar_id, sc_sess)

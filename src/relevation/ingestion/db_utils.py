@@ -364,12 +364,14 @@ def _upload_df(lidar_id: str):
                 file_id
             )
         FROM
-            'source_data/{lidar_id}'
+            'source_data/{lidar_id}.csv'
     """).strip()
 
     copy_stmt = re.sub(r"\s+", " ", copy_stmt)
 
     copy_stmt = f'cqlsh --execute="{copy_stmt}"'
+
+    # print(copy_stmt)
 
     container.exec_run(copy_stmt)
 
