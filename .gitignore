@@ -3,3 +3,4 @@ src/relevation/data/*
 *.pyc
 data/*
 *.egg-info*
+build/*
