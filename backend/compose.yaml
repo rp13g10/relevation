@@ -1,0 +1,64 @@
+services:
+  cassandra_1:
+    image: cassandra
+    container_name: cassandra_1
+    hostname: cassandra_1
+    ports:
+      - 9042:9042
+    volumes:
+      - relevation_1:/var/lib/cassandra
+      - ../data/csv:/source_data
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - runplanner
+    environment: &environment
+      CASSANDRA_SEEDS: cassandra_1
+      CASSANDRA_CLUSTER_NAME: relevation
+  cassandra_2:
+    image: cassandra
+    container_name: cassandra_2
+    hostname: cassandra_2
+    volumes:
+      - relevation_2:/var/lib/cassandra
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      cassandra_1:
+        condition: service_healthy
+    networks:
+      - runplanner
+    environment: *environment
+  cassandra_3:
+    image: cassandra
+    container_name: cassandra_3
+    hostname: cassandra_3
+    volumes:
+      - relevation_3:/var/lib/cassandra
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      cassandra_2:
+        condition: service_healthy
+    networks:
+      - runplanner
+    environment: *environment
+volumes:
+  relevation_1:
+    external: true
+  relevation_2:
+    external: true
+  relevation_3:
+    external: true
+networks:
+  runplanner:
+    driver: bridge
