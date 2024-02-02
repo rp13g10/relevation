@@ -7,10 +7,10 @@ from typing import Set, Tuple, Iterator
 import numpy as np
 import pandas as pd
 import rasterio as rio
-import shapefile as shp
-from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
+
 
 def get_available_folders(data_dir: str) -> Set[str]:
     """Get a list of all of the data folders which are available within the
@@ -28,7 +28,9 @@ def get_available_folders(data_dir: str) -> Set[str]:
     Returns:
         Set[str]: A set containing the absolute path to each data folder
     """
-    all_lidar_dirs = glob(os.path.join(data_dir, "lidar/LIDAR-DTM-1m-*"))
+    all_lidar_dirs = glob(
+        os.path.join(data_dir, "lidar/lidar_composite_dtm-*")
+    )
     if not all_lidar_dirs:
         raise FileNotFoundError("No files found in data directory!")
     return set(all_lidar_dirs)
@@ -66,12 +68,20 @@ def load_bbox_from_folder(lidar_dir: str) -> np.ndarray:
           folder. Will have 4 elements corresponding to the physical area
           represented by the corresponding .tif file in this folder.
     """
-    sf_loc = glob(os.path.join(lidar_dir, "index/*.shp"))[0]
+    tfw_loc = glob(os.path.join(lidar_dir, "*.tfw"))[0]
 
-    with shp.Reader(sf_loc) as sf:
-        bbox = sf.bbox
+    with open(tfw_loc, "r", encoding="utf8") as fobj:
+        tfw = fobj.readlines()
 
-    bbox = np.array(bbox, dtype=int)
+    easting_min = int(float(tfw[4].strip()))
+    easting_max = easting_min + 5000
+
+    northing_max = int(float(tfw[5].strip())) + 1
+    northing_min = northing_max - 5000
+
+    bbox = np.array(
+        [easting_min, northing_min, easting_max, northing_max], dtype=int
+    )
 
     return bbox
 
@@ -83,7 +93,7 @@ def generate_file_id(lidar_dir: str) -> str:
 
     Args:
         lidar_dir (str): The full path to a LIDAR file, expected format is
-          /some/path/relevation/data/LIDAR-DTM-1m-YYYY-XXDDxx
+          /some/path/relevation/data/lidar_composite_dtm_YYYY-1-XXDDxx
 
     Returns:
         str: The OS grid reference for the file, expected format is
@@ -97,7 +107,10 @@ def generate_file_id(lidar_dir: str) -> str:
         return file_id
 
     raise ValueError(
-        ("Unable to extract grid reference from provided lidar_dir: " + lidar_dir)
+        (
+            "Unable to extract grid reference from provided lidar_dir: "
+            + lidar_dir
+        )
     )
 
 
@@ -125,7 +138,9 @@ def explode_lidar(lidar: np.ndarray, bbox: np.ndarray) -> pd.DataFrame:
     eastings = np.tile(range(bbox[0], bbox[2]), size_s).astype("int32")
 
     # Repeat northings by element (A, A, B, B)
-    northings = np.repeat(range(bbox[3] - 1, bbox[1] - 1, -1), size_e).astype("int32")
+    northings = np.repeat(range(bbox[3] - 1, bbox[1] - 1, -1), size_e).astype(
+        "int32"
+    )
 
     # Create dataframe from columns
     lidar_df = pd.DataFrame.from_dict(
@@ -159,7 +174,7 @@ def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
 def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
     """Generate a file ID for a given file name, and store it in the provided
     dataframe under the 'file_id' column name. The file ID will be the OS grid
-    reference for the provided file name. For example, LIDAR-DTM-1M-2022-SU20ne
+    reference for the provided file name. For example, lidar_composite_dtm_2022-1-SU20ne
     would generate a file ID of SU20ne.
 
     Args:
@@ -174,31 +189,12 @@ def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
     return lidar_df
 
 
-def iter_dfs(data_dir: str) -> Iterator[Tuple[pd.DataFrame, str]]:
-    """Convenience function provided to facilitate the loading of data. This
-    will detect all available LIDAR datas, parse them into dataframes and yield
-    them to the user one file at a time. The generated dataframes will have
-    the following fields:
-      - easting
-      - northing
-      - easting_ptn
-      - northing_ptn
-      - file_id
-      - elevation
+def parse_lidar_folder(lidar_dir):
+    lidar = load_lidar_from_folder(lidar_dir)
+    bbox = load_bbox_from_folder(lidar_dir)
 
-    Yields:
-        Iterator[Tuple[pd.DataFrame, str]]: A dataframe containing LIDAR data,
-          and the unique identifier for the file used to generate it.
-    """
-    lidar_dirs = get_available_folders(data_dir)
+    lidar_df = explode_lidar(lidar, bbox)
+    lidar_df = add_partition_keys(lidar_df)
+    lidar_df = add_file_ids(lidar_df, lidar_dir)
 
-    for lidar_dir in tqdm(lidar_dirs):
-        lidar = load_lidar_from_folder(lidar_dir)
-        bbox = load_bbox_from_folder(lidar_dir)
-        file_id = generate_file_id(lidar_dir)
-
-        lidar_df = explode_lidar(lidar, bbox)
-        lidar_df = add_partition_keys(lidar_df)
-        lidar_df = add_file_ids(lidar_df, lidar_dir)
-
-        yield lidar_df, file_id
+    return lidar_df
