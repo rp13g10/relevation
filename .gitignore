@@ -1,5 +1,6 @@
 src/relevation/data/*
 .vscode
 *.pyc
-backend/data/*
-*.egg-info*
+data/*
+*.egg-info
+build/*

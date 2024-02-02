@@ -1,16 +1,20 @@
 """These handle the configuration of a fresh ScyllaDB cluster, and the writing
 of data to it."""
+import os
 import random
 import re
 from math import ceil
 from textwrap import dedent
 from typing import Set, Union
 
+import docker
 import numpy as np
 import pandas as pd
 from cassandra.cluster import Session  # pylint: disable=no-name-in-module
 from tqdm import tqdm
 
+client = docker.DockerClient(base_url='unix:///home/ross/.docker/desktop/docker.sock')
+container = client.containers.get('cassandra_1')
 
 def create_app_keyspace(session: Session):
     """Generate a `relevation` keyspace in the ScyllaDB instance, unless it
@@ -346,3 +350,43 @@ def initialize_db(session: Session):
     create_app_keyspace(session)
     create_lidar_table(session)
     create_dir_table(session)
+
+def _upload_df(lidar_id: str):
+
+    copy_stmt = dedent(f"""
+        COPY
+            relevation.lidar (
+                easting_ptn,
+                northing_ptn,
+                easting,
+                northing,
+                elevation,
+                file_id
+            )
+        FROM
+            'source_data/{lidar_id}.csv'
+    """).strip()
+
+    copy_stmt = re.sub(r"\s+", " ", copy_stmt)
+
+    copy_stmt = f'cqlsh --execute="{copy_stmt}"'
+
+    # print(copy_stmt)
+
+    container.exec_run(copy_stmt)
+
+
+def load_df(lidar_df: pd.DataFrame, lidar_id: str, data_dir: str):
+    csv_loc = os.path.join(data_dir, f"csv/{lidar_id}.csv")
+
+    col_list = [
+        "easting_ptn",
+        "northing_ptn",
+        "easting",
+        "northing",
+        "elevation",
+        "file_id",
+    ]
+    lidar_df[col_list].to_csv(csv_loc, index=False, header=False)
+
+    _upload_df(lidar_id)
