@@ -27,14 +27,6 @@ initialize_db(sc_sess)
 
 all_lidar_dirs = get_available_folders(DATA_DIR)
 
-count = 0
 for lidar_dir in tqdm(all_lidar_dirs):
 
     loaded = load_single_file(lidar_dir, sc_sess)
-
-    if loaded:
-        # Temporarily stop every 5th file to prevent tying up the computer
-        # for too long
-        count += 1
-    if count == 5:
-        break
