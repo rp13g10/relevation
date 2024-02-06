@@ -14,7 +14,6 @@ import pandas as pd
 
 # pylint: disable=no-name-in-module
 from cassandra.cluster import (
-    Cluster,
     Session,
 )
 from tqdm import tqdm
@@ -24,6 +23,7 @@ from relevation.ingestion.file_utils import (
     parse_lidar_folder,
 )
 
+# TODO: Refactor this, switch client across to function argument
 client = docker.DockerClient(
     base_url="unix:///home/ross/.docker/desktop/docker.sock"
 )

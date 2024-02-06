@@ -9,6 +9,7 @@ from cassandra.cluster import (
     Cluster,
 )  # pylint: disable=no-name-in-module
 
+# TODO: Refactor this, set up as function argument
 sc_db = Cluster(port=9042)
 sc_sess = sc_db.connect()
 
