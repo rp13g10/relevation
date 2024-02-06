@@ -7,7 +7,6 @@ from geopy.distance import distance
 from bng_latlon import WGS84toOSGB36
 from cassandra.cluster import (
     Cluster,
-    Session,
 )  # pylint: disable=no-name-in-module
 
 sc_db = Cluster(port=9042)
@@ -78,8 +77,8 @@ def _get_elevation_checkpoints(
     Returns:
         Tuple[List[float], List[float], distance]: A list of latitudes and
             a corresponding list of longitudes which represent points on an
-            edge of the graph. A geopy distance object which shows the total
-            distance between the start & end point
+            edge of the graph. The distance between the start & end point
+            in kilometers
     """
     # Calculate distance from A to B
     dist_change = distance((start_lat, start_lon), (end_lat, end_lon))
