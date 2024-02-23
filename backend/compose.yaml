@@ -18,6 +18,10 @@ services:
     environment: &environment
       CASSANDRA_SEEDS: cassandra_1
       CASSANDRA_CLUSTER_NAME: relevation
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 2048M
+    ulimits:
+      memlock: -1
   cassandra_2:
     image: cassandra
     container_name: cassandra_2
@@ -35,6 +39,8 @@ services:
     networks:
       - runplanner
     environment: *environment
+    ulimits:
+      memlock: -1
   cassandra_3:
     image: cassandra
     container_name: cassandra_3
@@ -52,6 +58,8 @@ services:
     networks:
       - runplanner
     environment: *environment
+    ulimits:
+      memlock: -1
 volumes:
   relevation_1:
     external: true

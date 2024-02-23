@@ -123,6 +123,11 @@ def _calculate_elevation_change_for_checkpoints(
     elevations = []
     for lat, lon in zip(lat_checkpoints, lon_checkpoints):
         elevation = get_elevation(lat, lon)
+
+        # If any data is missing, we cannot calculate the overall change
+        if elevation is None:
+            return None, None
+
         elevations.append(elevation)
 
     # Work out the sum of elevation gains/losses between checkpoints
