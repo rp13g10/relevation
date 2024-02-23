@@ -42,9 +42,9 @@ def get_elevation(lat: float, lon: float) -> Union[float, None]:
     WHERE
         easting_ptn={easting_ptn}
         AND northing_ptn={northing_ptn}
-        /*AND easting={easting}
+        AND easting={easting}
         AND northing={northing}
-    LIMIT 1*/
+    LIMIT 1
     """
     ).strip()
     # fmt: on
