@@ -10,8 +10,8 @@ services:
       - ../data/csv:/source_data
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
-      interval: 5s
-      timeout: 5s
+      interval: 15s
+      timeout: 15s
       retries: 20
     networks:
       - runplanner
@@ -30,8 +30,8 @@ services:
       - relevation_2:/var/lib/cassandra
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
-      interval: 5s
-      timeout: 5s
+      interval: 15s
+      timeout: 15s
       retries: 20
     depends_on:
       cassandra_1:
@@ -49,8 +49,8 @@ services:
       - relevation_3:/var/lib/cassandra
     healthcheck:
       test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
-      interval: 5s
-      timeout: 5s
+      interval: 15s
+      timeout: 15s
       retries: 20
     depends_on:
       cassandra_2:
