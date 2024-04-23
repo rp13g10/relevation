@@ -4,3 +4,5 @@ src/relevation/data/*
 data/*
 *.egg-info
 build/*
+htmlcov/*
+.coverage
