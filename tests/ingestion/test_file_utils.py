@@ -1,5 +1,5 @@
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 import numpy as np
 import pandas as pd
 from pandas.testing import assert_frame_equal
@@ -12,27 +12,31 @@ class TestGetAvailableFolders:
     """Check behaviour is as-expected when searching for files"""
 
     @patch("relevation.ingestion.file_utils.glob")
-    def test_files_found(self, mock_glob):
+    def test_files_found(self, mock_glob: MagicMock):
         """Check expected output format when files are found"""
         # Arrange
+        test_dir = "test/dir"
         mock_glob.return_value = ["item_one"]
-        target = {"item_one"}
+        target_out = {"item_one"}
+        target_call = "test/dir/lidar/lidar_composite_dtm-*"
 
         # Act
-        result = fu.get_available_folders()
+        result = fu.get_available_folders(test_dir)
 
         # Assert
-        assert result == target
+        assert result == target_out
+        mock_glob.assert_called_once_with(target_call)
 
     @patch("relevation.ingestion.file_utils.glob")
     def test_files_not_found(self, mock_glob):
         """Check exception is thrown when they aren't"""
         # Arrange
+        test_dir = "dummy"
         mock_glob.return_value = {}
 
         # Act, Assert
         with pytest.raises(FileNotFoundError):
-            _ = fu.get_available_folders()
+            _ = fu.get_available_folders(test_dir)
 
 
 @patch("relevation.ingestion.file_utils.rio.open")
@@ -69,38 +73,49 @@ def test_load_lidar_from_folder(
     assert result == target_output
 
 
-@patch("relevation.ingestion.file_utils.shp.Reader")
+@patch("relevation.ingestion.file_utils.open")
 @patch("relevation.ingestion.file_utils.glob")
-def test_load_bbox_from_folder(
-    mock_glob: MagicMock, mock_shp_reader: MagicMock
-):
+def test_load_bbox_from_folder(mock_glob: MagicMock, mock_open: MagicMock):
     """Check that data is passed through the function call as expected"""
     # Arrange
     mock_glob.return_value = ["file_one"]
 
-    # Sets sf while inside the 'with X as sf' block
-    mock_sf_inside = MagicMock()
-    mock_sf_inside.bbox = np.zeros(1)
+    # Mock out behaviour for data read
+    mock_lines = [
+        "1.0000000000\n",
+        "0.0000000000\n",
+        "0.0000000000\n",
+        "-1.0000000000\n",
+        "445000.5000000000\n",
+        "119999.5000000000\n",
+    ]
+    mock_readlines = MagicMock(return_value=mock_lines, id="readlines")
 
-    # Sets sf while the 'with X as sf' statement is evaluated
-    mock_sf_outside = MagicMock()
-    mock_sf_outside.__enter__ = MagicMock(return_value=mock_sf_inside)
+    mock_fobj = MagicMock(id="fobj")
+    mock_fobj.readlines = mock_readlines
 
-    mock_shp_reader.return_value = mock_sf_outside
+    mock_handle = MagicMock(id="handle")
+    mock_handle.__enter__ = MagicMock(return_value=mock_fobj, id="enter")
 
+    mock_open.return_value = mock_handle
+
+    # Set dummy file location
     test_lidar_dir = "/some/path"
 
-    target_glob_call = os.path.join("/some/path", "index/*.shp")
-    target_shp_call = "file_one"
-    target_output = np.zeros(1, dtype=int)
+    # Set expected outputs
+    target_glob_call = os.path.join("/some/path", "*.tfw")
+    target_open_args = ("file_one", "r")
+    target_open_kwargs = {"encoding": "utf8"}
+
+    target_output = np.array([445000, 115000, 450000, 120000])
 
     # Act
     result = fu.load_bbox_from_folder(test_lidar_dir)
 
     # Assert
     mock_glob.assert_called_once_with(target_glob_call)
-    mock_shp_reader.assert_called_once_with(target_shp_call)
-    assert result == target_output
+    mock_open.assert_called_once_with(*target_open_args, **target_open_kwargs)
+    assert (result == target_output).all()
 
 
 def test_generate_file_id():
@@ -215,8 +230,9 @@ def test_add_partition_keys():
         {
             "easting": [100000, 100025, 100050, 100075, 100100],
             "northing": [9950, 9975, 10000, 10025, 10050],
-            "easting_ptn": [1000, 1000, 1000, 1000, 1001],
-            "northing_ptn": [99, 99, 100, 100, 100],
+            # NOTE: Python rounds evens down from 0.5 and odds up from 0.5
+            "easting_ptn": [1000, 1000, 1000, 1001, 1001],
+            "northing_ptn": [100, 100, 100, 100, 100],
         }
     )
 

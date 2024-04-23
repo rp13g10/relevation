@@ -1,13 +1,17 @@
+"""Utility functions for querying available datasets and loading them into
+pandas dataframes"""
+
 import os
 import re
 from functools import lru_cache
 from glob import glob
-from typing import Set, Tuple, Iterator
+from typing import Set
 
 import numpy as np
 import pandas as pd
 import rasterio as rio
-from tqdm.contrib.concurrent import process_map
+
+from relevation.utils import get_partitions
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -164,10 +168,22 @@ def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: The input dataset, with additional 'easting_ptn' and
           'northing_ptn' columns.
     """
-    # TODO: Decide on best way to set up these partitions, current proposal
-    #       results in 1m per e/n partition pair
-    lidar_df.loc[:, "easting_ptn"] = lidar_df["easting"] // 100
-    lidar_df.loc[:, "northing_ptn"] = lidar_df["northing"] // 100
+
+    def ptn_getter(row: pd.Series):
+        easting_ptn, northing_ptn = get_partitions(
+            row["easting"], row["northing"]
+        )
+        ptn_series = pd.Series(
+            {"easting_ptn": easting_ptn, "northing_ptn": northing_ptn}
+        )
+        return ptn_series
+
+    lidar_df.loc[:, ["easting_ptn", "northing_ptn"]] = lidar_df.apply(
+        ptn_getter,
+        result_type="expand",
+        axis=1,
+    )
+
     return lidar_df
 
 
