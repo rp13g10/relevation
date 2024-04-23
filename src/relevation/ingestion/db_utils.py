@@ -367,7 +367,11 @@ def initialize_db(session: Session):
 
 
 def upload_csv(lidar_id: str):
+    """For a given lidar_id, upload the (parsed) csv file into cassandra
 
+    Args:
+        lidar_id (str): The unique identifier for a LIDAR file
+    """
     copy_stmt = dedent(
         f"""
         COPY
@@ -392,6 +396,16 @@ def upload_csv(lidar_id: str):
 
 
 def write_df_to_csv(lidar_df: pd.DataFrame, lidar_id: str, data_dir: str):
+    """Write the contents of a dataframe containing lidar data to the
+    specified location, setting the file name to <lidar_id>.csv
+
+    Args:
+        lidar_df (pd.DataFrame): A dataframe containing lidar data
+        lidar_id (str): The unique identifier for the lidar file which was
+          used to create lidar_df
+        data_dir (str): The location which the parsed dataframe should be
+          exported to
+    """
     csv_loc = os.path.join(data_dir, f"csv/{lidar_id}.csv")
 
     col_list = [
@@ -405,8 +419,18 @@ def write_df_to_csv(lidar_df: pd.DataFrame, lidar_id: str, data_dir: str):
     lidar_df[col_list].to_csv(csv_loc, index=False, header=False)
 
 
-def load_single_file(lidar_dir: str, sc_sess: Session):
+def load_single_file(lidar_dir: str, sc_sess: Session) -> bool:
+    """For a single lidar file, parse the data and export it to csv. The
+    parsed csv will then be loaded into cassandra.
 
+    Args:
+        lidar_dir (str): The absolute location of a single lidar folder, as
+          provided by DEFRA
+        sc_sess (Session): An active scylla/cassandra session
+
+    Returns:
+        bool: True if data was loaded successfully, False if it wasn't
+    """
     lidar_id = generate_file_id(lidar_dir)
 
     loaded = check_if_file_already_loaded(lidar_id, sc_sess)

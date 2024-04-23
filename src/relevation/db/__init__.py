@@ -179,7 +179,9 @@ def get_distance_and_elevation_change(
     (
         elevation_gain,
         elevation_loss,
-    ) = _calculate_elevation_change_for_checkpoints(lat_checkpoints, lon_checkpoints)
+    ) = _calculate_elevation_change_for_checkpoints(
+        lat_checkpoints, lon_checkpoints
+    )
 
     if elevation_gain is None or elevation_loss is None:
         return None, None, None
