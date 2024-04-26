@@ -8,7 +8,6 @@ from math import ceil
 from textwrap import dedent
 from typing import Set, Union
 
-import docker
 import numpy as np
 import pandas as pd
 
@@ -22,12 +21,6 @@ from relevation.ingestion.file_utils import (
     generate_file_id,
     parse_lidar_folder,
 )
-
-# TODO: Refactor this, switch client across to function argument
-client = docker.DockerClient(
-    base_url="unix:///home/ross/.docker/desktop/docker.sock"
-)
-container = client.containers.get("cassandra_1")
 
 
 def create_app_keyspace(session: Session):
@@ -366,7 +359,7 @@ def initialize_db(session: Session):
     create_dir_table(session)
 
 
-def upload_csv(lidar_id: str):
+def upload_csv(sc_container, lidar_id: str):
     """For a given lidar_id, upload the (parsed) csv file into cassandra
 
     Args:
@@ -392,7 +385,7 @@ def upload_csv(lidar_id: str):
 
     copy_stmt = f'cqlsh --execute="{copy_stmt}"'
 
-    container.exec_run(copy_stmt)  # type: ignore
+    sc_container.exec_run(copy_stmt)  # type: ignore
 
 
 def write_df_to_csv(lidar_df: pd.DataFrame, lidar_id: str, data_dir: str):
@@ -419,7 +412,7 @@ def write_df_to_csv(lidar_df: pd.DataFrame, lidar_id: str, data_dir: str):
     lidar_df[col_list].to_csv(csv_loc, index=False, header=False)
 
 
-def load_single_file(lidar_dir: str, sc_sess: Session) -> bool:
+def load_single_file(lidar_dir: str, sc_sess: Session, sc_container) -> bool:
     """For a single lidar file, parse the data and export it to csv. The
     parsed csv will then be loaded into cassandra.
 
@@ -441,7 +434,7 @@ def load_single_file(lidar_dir: str, sc_sess: Session) -> bool:
 
         write_df_to_csv(lidar_df, lidar_id, data_dir)
 
-        upload_csv(lidar_id)
+        upload_csv(sc_container, lidar_id)
         mark_file_as_loaded(lidar_id, sc_sess)
 
     return not loaded

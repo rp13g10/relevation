@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import rasterio as rio
 
-from relevation.utils import get_partitions
+from relevation.utils import get_partitions_for_df
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -154,39 +154,6 @@ def explode_lidar(lidar: np.ndarray, bbox: np.ndarray) -> pd.DataFrame:
     return lidar_df
 
 
-def add_partition_keys(lidar_df: pd.DataFrame) -> pd.DataFrame:
-    """Generate a new 'easting_ptn' and 'northing_ptn' column in the LIDAR
-    dataframe. These will be used for the partitioning of data within the
-    database, speeding up retrieval of data.
-    Partition columns are derived by dividing the corresponding coordinate by
-    100 and truncating the output.
-
-    Args:
-        lidar_df (pd.DataFrame): A dataframe containing LIDAR data
-
-    Returns:
-        pd.DataFrame: The input dataset, with additional 'easting_ptn' and
-          'northing_ptn' columns.
-    """
-
-    def ptn_getter(row: pd.Series):
-        easting_ptn, northing_ptn = get_partitions(
-            row["easting"], row["northing"]
-        )
-        ptn_series = pd.Series(
-            {"easting_ptn": easting_ptn, "northing_ptn": northing_ptn}
-        )
-        return ptn_series
-
-    lidar_df.loc[:, ["easting_ptn", "northing_ptn"]] = lidar_df.apply(
-        ptn_getter,
-        result_type="expand",
-        axis=1,
-    )
-
-    return lidar_df
-
-
 def add_file_ids(lidar_df: pd.DataFrame, lidar_dir: str) -> pd.DataFrame:
     """Generate a file ID for a given file name, and store it in the provided
     dataframe under the 'file_id' column name. The file ID will be the OS grid
@@ -210,7 +177,7 @@ def parse_lidar_folder(lidar_dir):
     bbox = load_bbox_from_folder(lidar_dir)
 
     lidar_df = explode_lidar(lidar, bbox)
-    lidar_df = add_partition_keys(lidar_df)
+    lidar_df = get_partitions_for_df(lidar_df)
     lidar_df = add_file_ids(lidar_df, lidar_dir)
 
     return lidar_df

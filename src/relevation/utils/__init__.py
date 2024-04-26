@@ -3,6 +3,7 @@ package"""
 
 from typing import Tuple
 
+import pandas as pd
 from bng_latlon import WGS84toOSGB36
 
 
@@ -42,3 +43,10 @@ def get_partitions(easting: int, northing: int) -> Tuple[int, int]:
     northing_ptn = round(northing / 100)
 
     return easting_ptn, northing_ptn
+
+
+def get_partitions_for_df(df: pd.DataFrame) -> pd.DataFrame:
+    df.loc[:, "easting_ptn"] = (df["easting"]).round().astype(int)
+    df.loc[:, "northing_ptn"] = (df["northing"]).round().astype(int)
+
+    return df
