@@ -39,14 +39,14 @@ def get_partitions(easting: int, northing: int) -> Tuple[int, int]:
         Tuple[int, int]: The easting partition and the northing partition
     """
 
-    easting_ptn = round(easting / 100)
-    northing_ptn = round(northing / 100)
+    easting_ptn = round(easting / 1000)
+    northing_ptn = round(northing / 1000)
 
     return easting_ptn, northing_ptn
 
 
 def get_partitions_for_df(df: pd.DataFrame) -> pd.DataFrame:
-    df.loc[:, "easting_ptn"] = (df["easting"]).round().astype(int)
-    df.loc[:, "northing_ptn"] = (df["northing"]).round().astype(int)
+    df.loc[:, "easting_ptn"] = (df["easting"] / 1000).round().astype(int)
+    df.loc[:, "northing_ptn"] = (df["northing"] / 1000).round().astype(int)
 
     return df
