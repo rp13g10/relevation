@@ -217,38 +217,6 @@ def test_explode_lidar():
     )
 
 
-def test_add_partition_keys():
-    """Check that partition keys are set correctly"""
-
-    # Arrange
-    test_lidar_df = pd.DataFrame.from_dict(
-        {
-            "easting": [100000, 100025, 100050, 100075, 100100],
-            "northing": [9950, 9975, 10000, 10025, 10050],
-        }
-    )
-
-    target = pd.DataFrame.from_dict(
-        {
-            "easting": [100000, 100025, 100050, 100075, 100100],
-            "northing": [9950, 9975, 10000, 10025, 10050],
-            # NOTE: Python rounds evens down from 0.5 and odds up from 0.5
-            "easting_ptn": [1000, 1000, 1000, 1001, 1001],
-            "northing_ptn": [100, 100, 100, 100, 100],
-        }
-    )
-
-    # Act
-    result = fu.add_partition_keys(test_lidar_df)
-
-    # Assert
-    assert_frame_equal(
-        result,
-        target,
-        check_dtype=False,
-    )
-
-
 def test_add_file_ids():
     """Check that file IDs are added correctly"""
 

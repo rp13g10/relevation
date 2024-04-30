@@ -43,8 +43,8 @@ class TestGetElevation:
         FROM
             relevation.lidar
         WHERE
-            easting_ptn=123
-            AND northing_ptn=988
+            easting_ptn=12
+            AND northing_ptn=99
             AND easting=12346
             AND northing=98765
         LIMIT 1;

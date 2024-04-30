@@ -32,8 +32,8 @@ def test_get_partitions():
     test_easting = 12345
     test_northing = 56789
 
-    target_easting_ptn = 123
-    target_northing_ptn = 568
+    target_easting_ptn = 12
+    target_northing_ptn = 57
 
     # Act
     result_easting_ptn, result_northing_ptn = get_partitions(
