@@ -25,10 +25,9 @@ warnings.filterwarnings(action="ignore", category=FutureWarning)
 
 
 DATA_DIR = "/home/ross/repos/relevation/data"
+CLUSTER_URL = "unix:///home/ross/.docker/desktop/docker.sock"
 
-client = docker.DockerClient(
-    base_url="unix:///home/ross/.docker/desktop/docker.sock"
-)
+client = docker.DockerClient(base_url=CLUSTER_URL)
 container = client.containers.get("cassandra_1")
 
 sc_db = Cluster(port=9042)
